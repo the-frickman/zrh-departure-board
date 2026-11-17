@@ -67,18 +67,22 @@ def next_departures(feed, now):
                   estimated.astimezone(ZURICH).strftime("%H:%M") if estimated else "",
                   gate[:1] if gate[:1].isalpha() else "", lettering(f.get("CAM")), "",
                   gate, remark]
-        upcoming.append((due, scheduled, carrier, number, values))
-    rows, seen = [], set()
-    for _, scheduled, carrier, number, values in sorted(upcoming):
+        names = (f.get("airline") or "", f.get("cityDe") or f.get("cityEn") or city,
+                 f.get("cityEn") or city)
+        upcoming.append((due, scheduled, carrier, number, values, names))
+    rows, seen, announcements = [], set(), {}
+    for _, scheduled, carrier, number, values, names in sorted(upcoming):
         key = (scheduled, carrier, number)
         if key not in seen:
             rows.append([v[:width] for v, (_, width) in zip(values, COLUMNS)])
+            row = rows[-1]
+            announcements["|".join((row[0], row[1], row[3]))] = dict(zip(("airline", "de", "en"), names))
             seen.add(key)
         if len(rows) == 5:
             break
     if not rows:
         raise ValueError("No upcoming commercial departures in feed. Keeping last snapshot.")
-    return rows + [EMPTY] * (5 - len(rows))
+    return rows + [EMPTY] * (5 - len(rows)), announcements
 
 
 def ref(char):
@@ -195,7 +199,8 @@ if __name__ == "__main__":
     with urlopen(FEED, timeout=30) as response:
         flights = json.load(response)
     checked = datetime.now(timezone.utc)
-    build(next_departures(flights, checked), checked)
+    rows, announcements = next_departures(flights, checked)
+    build(rows, checked)
     digest = hashlib.sha256(BOARD.read_bytes()).hexdigest()
-    manifest = {"fetched": checked.isoformat(), "sha256": digest}
+    manifest = {"fetched": checked.isoformat(), "sha256": digest, "announcements": announcements}
     (BOARD.parent.parent / "snapshot.json").write_text(json.dumps(manifest) + "\n")

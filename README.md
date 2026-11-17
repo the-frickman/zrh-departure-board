@@ -4,7 +4,7 @@ Five upcoming commercial departures from Zürich Airport on a Frankfurt-inspired
 
 [Open the departure board](https://the-frickman.github.io/zrh-departure-board/)
 
-Select **Enable announcements** to hear an original three-note chime followed by an English announcement. The first call reads a current gate call or the next scheduled departure. Keep the tab open to hear subsequent boarding calls, final calls and gate changes. Each announcement also appears as text. **Mute announcements** stops playback. Spoken audio uses the voices available in the browser or operating system.
+Select **Enable announcements** to hear an original descending three-note chime followed by a German announcement, a pause, and its English counterpart. The first call reads a current gate call or the next scheduled departure. Keep the tab open to hear subsequent boarding calls, final calls and gate changes. Announcements use airline names and localised destinations supplied by Zürich Airport. Each announcement also appears as text. **Mute announcements** stops playback. Spoken audio uses the voices available in the browser or operating system.
 
 ## How the site updates
 

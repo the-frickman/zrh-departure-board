@@ -8,7 +8,7 @@ const pa = new PublicAddress(report);
 const localClock = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Zurich", timeStyle: "medium" });
 const localStamp = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Zurich", dateStyle: "medium", timeStyle: "short" });
 const maxAge = 25 * 60 * 1000;
-let rows = [], digest, checked = 0, imageUrl, refreshing = false;
+let rows = [], names = {}, digest, checked = 0, imageUrl, refreshing = false;
 const fresh = time => time > 0 && Date.now() - time < maxAge;
 
 function tick() { document.querySelector("#clock").textContent = localClock.format(new Date()); }
@@ -29,7 +29,7 @@ audioButton.addEventListener("click", async () => {
     audioButton.textContent = "Mute announcements";
     audioButton.setAttribute("aria-pressed", "true");
     report("Sound enabled. Waiting for a recent departure update.");
-    if (fresh(checked)) pa.say([openingCall(rows)]);
+    if (fresh(checked)) pa.say([openingCall(rows, names)]);
   } catch (error) { report(error.message); }
   finally { audioButton.disabled = false; }
 });
@@ -71,9 +71,10 @@ async function refresh() {
     if (time < checked) return;
     const previous = rows;
     const current = digest === snapshot.sha256 ? rows : await readBoard(snapshot.sha256);
+    names = snapshot.announcements ?? {};
     if (pa.enabled && fresh(time) && !document.hidden) {
-      if (!fresh(checked)) pa.say([openingCall(current)]);
-      else pa.say(changedCalls(previous, current));
+      if (!fresh(checked)) pa.say([openingCall(current, names)]);
+      else pa.say(changedCalls(previous, current, names));
     }
     digest = snapshot.sha256;
     rows = current;
