@@ -22,10 +22,39 @@
     <div class="source"><span id="freshness" role="status">Loading departures…</span><a href="https://www.flughafen-zuerich.ch/en/passengers/fly/flightinformation/departures">Airport timetable ↗</a></div>
     <section class="pa" aria-labelledby="pa-title">
       <div class="speaker" aria-hidden="true"></div>
-      <div class="pa-copy"><h2 id="pa-title">Public address</h2><p id="message" role="status">Enable sound to hear the airport chime and flight announcements in German and English.</p></div>
-      <button id="audio" type="button" aria-pressed="false">Enable announcements</button>
+      <div class="pa-copy"><h2 id="pa-title">Public address</h2><p id="message" role="status">Press Play to hear the chime and automatic gate calls in German and English.</p></div>
+      <div class="transport" role="group" aria-label="Announcement playback">
+        <label class="chime-label">Chime<select id="chime">
+          <option value="three-tone-chime.mp3">Classic three-note</option>
+          <option value="airport-bingbong.mp3">Airport recording · two notes</option>
+        </select></label>
+        <button id="play" type="button">▶ Play</button>
+        <button id="pause" type="button" disabled>Ⅱ Pause</button>
+        <button id="stop" type="button" disabled>■ Stop</button>
+      </div>
     </section>
-    <footer><span>Independent departure board · Manuel Frick</span><a href="https://github.com/the-frickman/zrh-departure-board">View source ↗</a></footer>
+    <details class="desk">
+      <summary>Special announcements</summary>
+      <form id="composer">
+        <div class="fields">
+          <label>Flight<select id="flight"></select></label>
+          <label>Announcement<select id="kind">
+            <option value="BOARDING">Boarding call</option><option value="FINAL CALL">Final call</option>
+            <option value="PREBOARDING">Assisted boarding</option><option value="GATE CHANGE">Gate change</option>
+            <option value="DELAYED">Delay notice</option><option value="SCHEDULED">Departure time</option>
+          </select></label>
+          <label>Gate<input id="gate" placeholder="e.g. B41" maxlength="5" autocomplete="off"></label>
+        </div>
+        <button id="generate" type="submit">Generate announcement</button>
+      </form>
+      <div class="drafts">
+        <label>Deutsch<textarea id="draft-de" lang="de" maxlength="600" rows="3"></textarea></label>
+        <label>English<textarea id="draft-en" lang="en" maxlength="600" rows="3"></textarea></label>
+      </div>
+      <p>Generate a flight call or write your own text. Playback is local to this tab.</p>
+      <button id="queue" type="button" disabled>Play special announcement</button>
+    </details>
+    <footer><span>Independent departure board · Manuel Frick</span><span><a href="https://github.com/the-frickman/zrh-departure-board#sound-credits">Sound credits</a> · <a href="https://github.com/the-frickman/zrh-departure-board">View source ↗</a></span></footer>
   </main>
 </body>
 </html>

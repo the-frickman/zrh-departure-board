@@ -1,8 +1,8 @@
 const gateStates = new Set(["GO TO GATE", "GATE OPEN", "BOARDING", "FINAL CALL", "LAST CALL"]);
-const key = row => [row[0], row[1], row[3]].join("|");
+export const flightKey = row => [row[0], row[1], row[3]].join("|");
 
-function announcement(row, names, kind) {
-  const info = names[key(row)] ?? {};
+export function announcement(row, names, kind) {
+  const info = names[flightKey(row)] ?? {};
   const airline = info.airline ? info.airline + " " : "";
   const flight = row[0].trim().replace(/\s+/g, " ");
   const deFlight = `${airline}Flug ${flight} nach ${info.de || row[1]}`;
@@ -10,6 +10,14 @@ function announcement(row, names, kind) {
   const gate = row[8].replace(/^([A-Z]+)(\d+)/, "$1 $2");
   let de, en;
   switch (kind) {
+    case "PREBOARDING":
+      de = `Fluggäste für ${deFlight}, die beim Einsteigen Unterstützung benötigen, werden jetzt zu Gate ${gate} gebeten.`;
+      en = `Passengers on ${enFlight} who require assistance with boarding are now invited to gate ${gate}.`;
+      break;
+    case "DELAYED":
+      de = `Der Abflug von ${deFlight} verzögert sich. Bitte beachten Sie die Anzeigen für weitere Informationen.`;
+      en = `${enFlight} has been delayed. Please check the departure screens for updates.`;
+      break;
     case "BOARDING":
       de = `Das Boarding für ${deFlight} beginnt. Bitte begeben Sie sich zu Gate ${gate}.`;
       en = `${enFlight} is now boarding at gate ${gate}.`;
@@ -46,10 +54,10 @@ export function openingCall(rows, names = {}) {
 }
 
 export function changedCalls(previous, current, names = {}) {
-  const old = new Map(previous.map(row => [key(row), row]));
+  const old = new Map(previous.map(row => [flightKey(row), row]));
   const messages = [];
   for (const row of current.filter(row => row[0])) {
-    const before = old.get(key(row));
+    const before = old.get(flightKey(row));
     if (before && before[8] === row[8] && before[9] === row[9]) continue;
     if (!row[8]) continue;
     if (gateStates.has(row[9])) messages.push(announcement(row, names, row[9]));
@@ -60,54 +68,80 @@ export function changedCalls(previous, current, names = {}) {
   return messages;
 }
 
-// Each note has a short attack and a longer, quieter overtone like a struck bell.
-function chime(context, output) {
-  const lastNotes = [];
-  const onset = context.currentTime + .02;
-  for (const [index, pitch] of [783.99, 659.25, 523.25].entries()) {
-    for (const [ratio, level] of [[1, .16], [2.01, .035]]) {
-      const start = onset + index * .40;
-      const bell = context.createOscillator();
-      const envelope = context.createGain();
-      bell.frequency.value = pitch * ratio;
-      envelope.gain.setValueAtTime(.0001, start);
-      envelope.gain.exponentialRampToValueAtTime(level, start + .015);
-      envelope.gain.exponentialRampToValueAtTime(.0001, start + (index === 2 ? 1.05 : .72));
-      bell.connect(envelope).connect(output);
-      lastNotes.push(new Promise(resolve => { bell.onended = resolve; }));
-      bell.start(start);
-      bell.stop(start + (index === 2 ? 1.1 : .76));
-    }
-  }
-  return Promise.all(lastNotes);
-}
-
 export class PublicAddress {
   constructor(report) {
     this.report = report;
     this.generation = 0;
     this.enabled = false;
+    this.paused = false;
     this.pending = [];
+    this.chimeFile = "three-tone-chime.mp3";
+    this.buffers = new Map();
   }
 
   async enable() {
     const Audio = window.AudioContext || window.webkitAudioContext;
-    if (!Audio) throw new Error("This browser does not support the airport chime.");
+    if (!Audio) throw new Error("Audio playback is unavailable in this browser.");
     this.context ??= new Audio();
     await this.context.resume();
-    this.output = this.context.createGain();
-    this.output.connect(this.context.destination);
     this.enabled = true;
+    if (this.paused) {
+      this.paused = false;
+      window.speechSynthesis?.resume();
+      this.wake?.();
+    }
+  }
+
+  async pause() {
+    if (!this.enabled || this.paused) return;
+    this.paused = true;
+    window.speechSynthesis?.pause();
+    await this.context.suspend();
+  }
+
+  async ready(generation) {
+    while (this.paused && generation === this.generation) {
+      await new Promise(resolve => { this.wake = resolve; });
+      this.wake = null;
+    }
+    return this.enabled && generation === this.generation;
   }
 
   mute() {
-    this.enabled = false;
+    this.enabled = this.paused = false;
     this.generation++;
     this.pending = [];
-    this.output?.disconnect();
-    window.speechSynthesis?.cancel();
+    this.wake?.();
+    this.source?.stop();
     this.finishSpeech?.();
+    window.speechSynthesis?.cancel();
+    window.speechSynthesis?.resume();
     this.busy = false;
+  }
+
+  async chime(generation) {
+    const file = this.chimeFile;
+    if (!this.buffers.has(file)) {
+      const response = await fetch(new URL("./assets/audio/" + file, import.meta.url));
+      if (!response.ok) throw new Error("Could not load the announcement chime.");
+      this.buffers.set(file, await this.context.decodeAudioData(await response.arrayBuffer()));
+    }
+    if (!await this.ready(generation)) return;
+    const source = this.context.createBufferSource();
+    const volume = this.context.createGain();
+    volume.gain.value = .55;
+    source.buffer = this.buffers.get(file);
+    source.connect(volume).connect(this.context.destination);
+    this.source = source;
+    return new Promise(resolve => {
+      source.onended = () => {
+        source.disconnect();
+        volume.disconnect();
+        if (this.source === source) this.source = null;
+        resolve();
+      };
+      source.start();
+    });
   }
 
   say(messages) {
@@ -119,13 +153,18 @@ export class PublicAddress {
   async play(generation) {
     this.busy = true;
     while (this.pending.length && this.enabled && generation === this.generation) {
+      if (!await this.ready(generation)) return;
       const lines = this.pending.shift();
       const transcript = lines.map(line => line.text).join(" / ");
       this.report(transcript);
-      await chime(this.context, this.output);
+      try { await this.chime(generation); }
+      catch {
+        if (generation !== this.generation) return;
+        this.report("Chime unavailable. Continuing with the announcement.");
+      }
       for (const line of lines) {
         await new Promise(resolve => setTimeout(resolve, 350));
-        if (!this.enabled || generation !== this.generation) return;
+        if (!await this.ready(generation)) return;
         if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) {
           this.report(transcript + " · Speech unavailable on this device.");
           break;
@@ -152,12 +191,18 @@ export class PublicAddress {
     if (preferred) utterance.voice = preferred;
     return new Promise(resolve => {
       const finish = success => {
-        clearTimeout(timer);
+        clearInterval(timer);
         utterance.onend = utterance.onerror = null;
         this.finishSpeech = null;
         resolve(success);
       };
-      const timer = setTimeout(() => { finish(false); window.speechSynthesis.cancel(); }, 30000);
+      let activeSeconds = 0;
+      const timer = setInterval(() => {
+        if (!this.paused && ++activeSeconds > Math.max(30, text.length / 5)) {
+          finish(false);
+          window.speechSynthesis.cancel();
+        }
+      }, 1000);
       this.finishSpeech = () => finish(false);
       utterance.onend = () => finish(true);
       utterance.onerror = () => finish(false);

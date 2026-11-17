@@ -1,7 +1,7 @@
-import { changedCalls, openingCall, PublicAddress } from "./announcements.js";
+import { announcement, changedCalls, flightKey, openingCall, PublicAddress } from "./announcements.js";
 
 const display = document.querySelector("#board");
-const audioButton = document.querySelector("#audio");
+const $ = id => document.getElementById(id);
 const status = document.querySelector("#freshness");
 const report = text => { document.querySelector("#message").textContent = text; };
 const pa = new PublicAddress(report);
@@ -15,23 +15,83 @@ function tick() { document.querySelector("#clock").textContent = localClock.form
 tick();
 setInterval(tick, 1000);
 
-audioButton.addEventListener("click", async () => {
-  if (pa.enabled) {
-    pa.mute();
-    audioButton.textContent = "Enable announcements";
-    audioButton.setAttribute("aria-pressed", "false");
-    report("Announcements muted.");
+let starting = false;
+let messageBeforePause = "";
+
+function controls() {
+  $("play").disabled = starting || (pa.enabled && !pa.paused);
+  $("play").textContent = pa.paused ? "▶ Resume" : "▶ Play";
+  $("pause").disabled = starting || !pa.enabled || pa.paused;
+  $("stop").disabled = starting || !pa.enabled;
+  $("queue").disabled = starting || !($("draft-de").value.trim() || $("draft-en").value.trim());
+}
+
+async function start(special) {
+  if (starting) return;
+  starting = true;
+  controls();
+  try {
+    const first = !pa.enabled;
+    await pa.enable();
+    if (special) {
+      if (pa.busy) report("Special announcement queued.");
+      pa.say([special]);
+    } else if (first) {
+      report("Sound enabled. Waiting for a recent departure update.");
+      if (fresh(checked)) pa.say([openingCall(rows, names)]);
+    } else if (!pa.busy) report("Listening for gate calls.");
+    else if ($("message").textContent === "Playback paused.") report(messageBeforePause || "Playback resumed.");
+  } catch (error) { report(error.message); }
+  finally { starting = false; controls(); }
+}
+
+$("play").addEventListener("click", () => start(null));
+$("chime").addEventListener("change", () => { pa.chimeFile = $("chime").value; });
+$("pause").addEventListener("click", async () => {
+  messageBeforePause = $("message").textContent;
+  const paused = pa.pause();
+  report("Playback paused.");
+  controls();
+  try { await paused; } catch { pa.mute(); report("Playback stopped. This device could not pause audio."); controls(); }
+});
+$("stop").addEventListener("click", () => {
+  pa.mute(); report("Playback stopped."); controls();
+});
+
+function selectedRow() { return rows.find(r => flightKey(r) === $("flight").value); }
+function syncFlights(previous) {
+  const selected = $("flight").value;
+  const oldGate = previous.find(r => flightKey(r) === selected)?.[8];
+  const active = rows.filter(r => r[0]);
+  $("flight").replaceChildren(...active.map(r => new Option(r[0].replace(/\s+/g, " ") + " · " + r[1], flightKey(r))));
+  if (active.some(r => flightKey(r) === selected)) $("flight").value = selected;
+  if (selected !== $("flight").value || $("gate").value === oldGate) {
+    $("gate").value = selectedRow()?.[8] || "";
+  }
+}
+$("flight").addEventListener("change", () => { $("gate").value = selectedRow()?.[8] || ""; });
+$("composer").addEventListener("submit", event => {
+  event.preventDefault();
+  const row = selectedRow();
+  if (!row) { report("Select a flight or enter your own announcement below."); return; }
+  const draft = [...row];
+  draft[8] = $("gate").value.trim().toUpperCase();
+  const kind = $("kind").value;
+  if (!["SCHEDULED", "DELAYED"].includes(kind) && !/^[A-Z0-9]{1,5}$/.test(draft[8])) {
+    $("gate").setCustomValidity("Enter a gate code for this call.");
+    $("gate").reportValidity();
+    $("gate").setCustomValidity("");
     return;
   }
-  audioButton.disabled = true;
-  try {
-    await pa.enable();
-    audioButton.textContent = "Mute announcements";
-    audioButton.setAttribute("aria-pressed", "true");
-    report("Sound enabled. Waiting for a recent departure update.");
-    if (fresh(checked)) pa.say([openingCall(rows, names)]);
-  } catch (error) { report(error.message); }
-  finally { audioButton.disabled = false; }
+  const [de, en] = announcement(draft, names, kind);
+  $("draft-de").value = de.text;
+  $("draft-en").value = en.text;
+  controls();
+});
+for (const id of ["draft-de", "draft-en"]) $(id).addEventListener("input", controls);
+$("queue").addEventListener("click", () => {
+  const lines = [{lang:"de-CH", text:$("draft-de").value.trim()}, {lang:"en-GB", text:$("draft-en").value.trim()}];
+  start(lines.filter(line => line.text));
 });
 
 async function readBoard(hash) {
@@ -72,12 +132,14 @@ async function refresh() {
     const previous = rows;
     const current = digest === snapshot.sha256 ? rows : await readBoard(snapshot.sha256);
     names = snapshot.announcements ?? {};
-    if (pa.enabled && fresh(time) && !document.hidden) {
+    if (pa.enabled && !pa.paused && fresh(time) && !document.hidden) {
       if (!fresh(checked)) pa.say([openingCall(current, names)]);
       else pa.say(changedCalls(previous, current, names));
     }
     digest = snapshot.sha256;
+    const listChanged = JSON.stringify(rows) !== JSON.stringify(current);
     rows = current;
+    if (listChanged) syncFlights(previous);
     checked = time;
     status.textContent = (fresh(time) ? "Airport checked " : "Last available update · ") + localStamp.format(time) + " Zürich";
   } catch {

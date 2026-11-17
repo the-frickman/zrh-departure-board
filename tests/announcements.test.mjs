@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { openingCall, changedCalls } from "../site/announcements.js";
+import { announcement, openingCall, changedCalls } from "../site/announcements.js";
 
 const flight = (gate, status) => ["LH 2222", "MUNICH", "", "20:45", "", "B", "", "", gate, status];
 const names = { "LH 2222|MUNICH|20:45": { airline: "Lufthansa", de: "München", en: "Munich" } };
@@ -27,4 +27,14 @@ test("changed calls use current names and gates and skip repeats", () => {
 test("older snapshots still produce an intelligible call", () => {
   assert.match(openingCall([flight("", "SCHEDULED")])[1].text, /^Flight LH 2222/);
   assert.equal(openingCall([]), null);
+});
+
+test("specials use the chosen gate and work without a gate for delay notices", () => {
+  const [de, en] = announcement(flight("A32", "SCHEDULED"), names, "PREBOARDING");
+  assert.match(de.text, /Lufthansa Flug LH 2222 nach München.*Unterstützung.*Gate A 32/);
+  assert.match(en.text, /Lufthansa flight LH 2222 to Munich.*assistance.*gate A 32/);
+  const delayed = announcement(flight("", "SCHEDULED"), names, "DELAYED");
+  assert.match(delayed[0].text, /Lufthansa Flug LH 2222 nach München verzögert sich/);
+  assert.match(delayed[1].text, /Lufthansa flight LH 2222 to Munich has been delayed/);
+  assert.doesNotMatch(delayed[1].text, /gate/i);
 });
