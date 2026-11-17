@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#17231e">
+  <title>Zürich departures · ZRH</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./board.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="identity"><span class="iata">ZRH</span><div><h1>Zürich Airport</h1><p>Flughafen Zürich <span> / </span> LSZH</p></div></div>
+      <div class="clock"><span>LOCAL TIME</span><time id="clock">––:––:––</time></div>
+    </header>
+
+    <section aria-label="Upcoming departures" class="display">
+      <div id="board" aria-busy="true"></div>
+      <noscript><img src="./assets/splitflap-board.svg" alt="Five Zürich departures in local time."><p>Enable JavaScript for announcements and automatic updates.</p></noscript>
+    </section>
+    <div class="source"><span id="freshness" role="status">Loading departures…</span><a href="https://www.flughafen-zuerich.ch/en/passengers/fly/flightinformation/departures">Airport timetable ↗</a></div>
+    <section class="pa" aria-labelledby="pa-title">
+      <div class="speaker" aria-hidden="true"></div>
+      <div class="pa-copy"><h2 id="pa-title">Public address</h2><p id="message" role="status">Enable sound to hear the airport chime and automatic flight announcements.</p></div>
+      <button id="audio" type="button" aria-pressed="false">Enable announcements</button>
+    </section>
+    <footer><span>Independent departure board · Manuel Frick</span><a href="https://github.com/the-frickman/zrh-departure-board">View source ↗</a></footer>
+  </main>
+</body>
+</html>

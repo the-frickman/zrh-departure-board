@@ -1,0 +1,6 @@
+{
+  "name": "zrh-departure-board",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test tests/announcements.test.mjs" }
+}
